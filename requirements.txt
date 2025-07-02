@@ -6,3 +6,4 @@ matplotlib
 seaborn
 mlxtend
 plotly-express
+kmodes
