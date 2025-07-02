@@ -165,48 +165,67 @@ elif page == "🎯 Clustering (K-Prototypes)":
     st.header("🎯 K-Prototypes Segmentation")
 
     num_cols = ["Age", "Monthly_Income_AED", "Willingness_Score_1_10"]
-    cat_cols = [c for c in df.columns if c not in num_cols and c != "Cluster"]
+    # everything else (except pre-existing 'Cluster') is categorical
+    cat_cols = [c for c in df.columns if c not in num_cols + ["Cluster"]]
 
-    # ---- Defensive NaN handling ----
+    # ── Robust NaN handling ────────────────────────────────────
     df_clean = df.copy()
+
+    # numeric → mean imputation
     df_clean[num_cols] = df_clean[num_cols].fillna(df_clean[num_cols].mean())
-    df_clean[cat_cols] = df_clean[cat_cols].fillna(0).astype(int)
 
-    scaler = StandardScaler()
-    X_num = scaler.fit_transform(df_clean[num_cols])
-    X_cat = df_clean[cat_cols].to_numpy()
-    X_mix = np.hstack([X_num, X_cat])
+    # categorical:
+    binary_cols = [c for c in cat_cols                # 0/1 flags
+                   if pd.api.types.is_numeric_dtype(df[c])]
+    multi_cols  = [c for c in cat_cols if c not in binary_cols]
 
-    cat_idx = list(range(X_num.shape[1], X_mix.shape[1]))
+    df_clean[binary_cols] = df_clean[binary_cols].fillna(0).astype(int)
+    df_clean[multi_cols]  = df_clean[multi_cols].fillna("Missing").astype(str)
 
-    k = st.slider("k (clusters)", 2, 10, 4)
-    γ = st.number_input("γ (balance factor, 0 = auto)", value=0.0, step=0.1)
-    gamma = None if γ == 0 else γ
+    # ── Build mixed matrix for K-Prototypes ────────────────────
+    scaler   = StandardScaler()
+    X_num    = scaler.fit_transform(df_clean[num_cols])
+    X_cat    = df_clean[cat_cols].to_numpy()           # ints & strings OK
+    X_mix    = np.hstack([X_num, X_cat])
+
+    cat_idx  = list(range(X_num.shape[1], X_mix.shape[1]))  # positions of categorical cols
+
+    # UI controls
+    k  = st.slider("k (clusters)", 2, 10, 4)
+    g  = st.number_input("γ (numeric-vs-categorical weight – 0 = auto)", 0.0, 10.0, 0.0, 0.1)
+    γ  = None if g == 0 else g
 
     kp = KPrototypes(n_clusters=k, init="Huang", n_init=10,
-                     gamma=gamma, random_state=42, verbose=0)
+                     gamma=γ, random_state=42, verbose=0)
 
     clusters = kp.fit_predict(X_mix, categorical=cat_idx)
     df["Cluster"] = clusters
-    st.success(f"Clustering finished — {k} clusters")
+    st.success(f"Clustering complete → {k} segments")
 
-    # Cost diagnostic
+    # ── Cost curve (diagnostic) ───────────────────────────────
     costs = []
-    for k_i in range(2, 11):
-        kp_i = KPrototypes(n_clusters=k_i, n_init=5, random_state=42)
-        kp_i.fit_predict(X_mix, categorical=cat_idx)
-        costs.append(kp_i.cost_)
+    for ki in range(2, 11):
+        km = KPrototypes(n_clusters=ki, n_init=5, random_state=42)
+        km.fit_predict(X_mix, categorical=cat_idx)
+        costs.append(km.cost_)
     fig_cost, ax_cost = plt.subplots()
     ax_cost.plot(range(2, 11), costs, marker="o")
-    ax_cost.set_xlabel("k");  ax_cost.set_ylabel("Cost");  ax_cost.set_title("Cost curve")
+    ax_cost.set(xlabel="k", ylabel="Cost", title="Cost curve")
     st.pyplot(fig_cost)
 
-    # Persona table
+    # ── Persona table ─────────────────────────────────────────
+    persona_num = df.groupby("Cluster")[num_cols].mean().round(1)
+    persona_cat = df.groupby("Cluster")[multi_cols].agg(lambda s: s.mode().iloc[0])
+    persona_bin = df.groupby("Cluster")[binary_cols].mean().round(2)
+
+    persona = pd.concat([persona_num, persona_cat, persona_bin], axis=1)
     st.subheader("Cluster personas")
-    persona_numeric = df.groupby("Cluster")[num_cols].mean().round(1)
-    persona_categorical = df.groupby("Cluster")[cat_cols].agg(lambda x: x.mode().iloc[0])
-    persona = pd.concat([persona_numeric, persona_categorical], axis=1)
     st.dataframe(persona)
+
+    st.download_button("Download labelled data",
+                       df.to_csv(index=False).encode("utf-8"),
+                       "clustered_data.csv",
+                       "text/csv")
 
 # ───────────────────────────────────────────────────────────────
 # 4️⃣  ASSOCIATION RULES
