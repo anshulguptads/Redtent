@@ -16,346 +16,325 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from mlxtend.frequent_patterns import apriori, association_rules
 
-# ---------------------------#
-#          SETTINGS          #
-# ---------------------------#
+# ---------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------
 st.set_page_config(page_title="Luxury Gym Market Intelligence",
-                   layout="wide",
-                   page_icon="💪")
+                   page_icon="💪",
+                   layout="wide")
 
-# ---------------------------#
-#        LOAD DATA           #
-# ---------------------------#
+# ---------------------------------------------
+# DATA LOADING
+# ---------------------------------------------
 @st.cache_data
-def load_data(path: str = "luxury_gym_survey_wide.csv") -> pd.DataFrame:
-    df_ = pd.read_csv(path)
-    return df_
+def load_data(path: str = "luxury_gym_survey_wide.csv"):
+    return pd.read_csv(path)
 
-data = load_data()
+df = load_data()
 
-# ---------------------------#
-#    SIDEBAR NAVIGATION      #
-# ---------------------------#
-st.sidebar.title("🏋️‍♀️ Dashboard Modules")
-module = st.sidebar.radio("Jump to:",
-                          ("📊 Descriptive Analytics",
-                           "🤖 Classification",
-                           "🎯 Clustering",
-                           "🛒 Association Rules",
-                           "📈 Regression"))
+# ---------------------------------------------
+# SIDEBAR NAVIGATION
+# ---------------------------------------------
+st.sidebar.title("🏋️‍♀️ Modules")
+page = st.sidebar.radio(
+    "Choose an analytics module",
+    ["📊 Descriptive Analytics",
+     "🤖 Classification",
+     "🎯 Clustering",
+     "🛒 Association Rules",
+     "📈 Regression"]
+)
 
-# ---------------------------#
-#   HELPER FUNCTIONS         #
-# ---------------------------#
-def performance_table(y_true, preds, model_name) -> dict:
+# ---------------------------------------------
+# HELPERS
+# ---------------------------------------------
+def perf_table(y_true, y_pred, name):
     return {
-        "Model": model_name,
-        "Accuracy": accuracy_score(y_true, preds).round(3),
-        "Precision": precision_score(y_true, preds).round(3),
-        "Recall": recall_score(y_true, preds).round(3),
-        "F1": f1_score(y_true, preds).round(3)
+        "Model": name,
+        "Accuracy": round(accuracy_score(y_true, y_pred), 3),
+        "Precision": round(precision_score(y_true, y_pred), 3),
+        "Recall": round(recall_score(y_true, y_pred), 3),
+        "F1": round(f1_score(y_true, y_pred), 3)
     }
 
-def prettify_rules(df_rules: pd.DataFrame) -> pd.DataFrame:
+def prettify_rule_cols(rules_df):
     for col in ["antecedents", "consequents"]:
-        df_rules[col] = (df_rules[col]
-                         .apply(lambda x: ', '.join(sorted(list(x)))))
-    return df_rules
+        rules_df[col] = rules_df[col].apply(lambda x: ', '.join(sorted(list(x))))
+    return rules_df
 
-# ---------------------------#
-#    DESCRIPTIVE ANALYTICS   #
-# ---------------------------#
-if module == "📊 Descriptive Analytics":
-    st.header("📊 Descriptive Market Insights")
+# ---------------------------------------------
+# DESCRIPTIVE ANALYTICS
+# ---------------------------------------------
+if page == "📊 Descriptive Analytics":
+    st.header("📊 Descriptive Insights")
 
-    # --- Interactive filters
-    with st.sidebar.expander("🔎 Dataset Filters", True):
-        age_range = st.slider("Age Range:", 
-                              int(data.Age.min()), int(data.Age.max()),
-                              (25, 45))
-        income_range = st.slider("Monthly Income (AED):",
-                                 int(data.Monthly_Income_AED.min()),
-                                 int(data.Monthly_Income_AED.max()),
-                                 (5000, 20000), step=1000)
-        gender_sel = st.multiselect("Gender:", 
-                                    options=data.Gender.unique().tolist(),
-                                    default=data.Gender.unique().tolist())
-        show_raw = st.checkbox("Show raw filtered data")
+    with st.sidebar.expander("🔎 Filters", True):
+        age_slider = st.slider("Age range", int(df.Age.min()), int(df.Age.max()), (25, 45))
+        income_slider = st.slider("Monthly Income (AED)", int(df.Monthly_Income_AED.min()),
+                                  int(df.Monthly_Income_AED.max()), (5000, 20000), step=1000)
+        gender_multiselect = st.multiselect("Gender", df.Gender.unique().tolist(),
+                                            default=df.Gender.unique().tolist())
+        show_raw = st.checkbox("Show filtered data (raw)")
 
-    df_filt = data[
-        (data.Age.between(*age_range)) &
-        (data.Monthly_Income_AED.between(*income_range)) &
-        (data.Gender.isin(gender_sel))
-    ]
-    st.success(f"Active sample ➜ {len(df_filt)} respondents")
+    df_filt = df[(df.Age.between(*age_slider)) &
+                 (df.Monthly_Income_AED.between(*income_slider)) &
+                 (df.Gender.isin(gender_multiselect))]
+
+    st.success(f"Active sample size: {len(df_filt)}")
 
     if show_raw:
         st.dataframe(df_filt.head())
 
-    # Layout grid 2x2
-    c1, c2 = st.columns(2)
-    with c1:
+    # 2x2 grid
+    col1, col2 = st.columns(2)
+    with col1:
         st.subheader("Income Distribution")
-        fig, ax = plt.subplots()
-        sns.histplot(df_filt["Monthly_Income_AED"], kde=True, ax=ax)
-        ax.set_xlabel("Monthly Income (AED)")
-        st.pyplot(fig)
+        fig_inc, ax_inc = plt.subplots()
+        sns.histplot(df_filt["Monthly_Income_AED"], kde=True, ax=ax_inc)
+        ax_inc.set_xlabel("Monthly Income (AED)")
+        st.pyplot(fig_inc)
 
-    with c2:
+    with col2:
         st.subheader("Willingness Score Distribution")
-        fig2, ax2 = plt.subplots()
-        sns.countplot(x="Willingness_Score_1_10", data=df_filt, ax=ax2,
-                      palette="viridis")
-        st.pyplot(fig2)
+        fig_will, ax_will = plt.subplots()
+        sns.countplot(x="Willingness_Score_1_10", data=df_filt, ax=ax_will)
+        st.pyplot(fig_will)
 
-    c3, c4 = st.columns(2)
-    with c3:
-        st.subheader("Willingness vs Age (Trendline)")
-        fig3 = px.scatter(df_filt, x="Age", y="Willingness_Score_1_10",
-                          trendline="ols", opacity=0.7,
-                          height=400)
-        st.plotly_chart(fig3, use_container_width=True)
+    col3, col4 = st.columns(2)
+    with col3:
+        st.subheader("Willingness vs Age (with line fit)")
+        fig_scatter = px.scatter(df_filt, x="Age", y="Willingness_Score_1_10",
+                                 opacity=0.7, height=400)
+        if len(df_filt) > 1:
+            coef = np.polyfit(df_filt["Age"], df_filt["Willingness_Score_1_10"], 1)
+            x_line = np.linspace(df_filt["Age"].min(), df_filt["Age"].max(), 100)
+            y_line = coef[0] * x_line + coef[1]
+            fig_scatter.add_scatter(x=x_line, y=y_line, mode="lines",
+                                    name="Linear fit", line=dict(dash="dash"))
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
-    with c4:
-        st.subheader("Facility Importance Heatmap")
-        fac_cols = [c for c in data.columns if c.startswith("Fac_")]
-        mean_fac = df_filt[fac_cols].mean().sort_values(ascending=False)
-        fig4, ax4 = plt.subplots()
-        sns.barplot(y=mean_fac.index.str.replace("Fac_", ""),
-                    x=mean_fac.values, ax=ax4)
-        ax4.set_xlabel("Selection Frequency")
-        ax4.set_ylabel("")
-        st.pyplot(fig4)
+    with col4:
+        st.subheader("Facility Preference Frequency")
+        fac_cols = [c for c in df.columns if c.startswith("Fac_")]
+        fac_freq = df_filt[fac_cols].mean().sort_values(ascending=False)
+        fig_fac, ax_fac = plt.subplots()
+        sns.barplot(y=fac_freq.index.str.replace("Fac_", ""),
+                    x=fac_freq.values, ax=ax_fac)
+        ax_fac.set_xlabel("Selection Frequency")
+        ax_fac.set_ylabel("")
+        st.pyplot(fig_fac)
 
-    st.markdown("### 🔍 Executive Takeaways")
+    st.markdown("### 🔍 Key Insights")
     st.write("""
-    * **Income Plateau** – Spending intent rises sharply till ~15 k AED and flattens beyond, hinting at premium tier ceiling.  
-    * **Tech-savvy Cohort** – 'Smart tech' aficionados show a +18 % lift in joining likelihood.  
-    * **Evening Dominance** – 41 % prefer evening slots, crucial for staffing & class scheduling.  
-    * **Spa Crossover** – 70 % of Yoga/Pilates fans also choose Spa/Wellness, validating bundled upsell.  
-    * **Pain-point Opportunity** – Respondents citing hygiene issues exhibit 2× luxury-brand preference.  
-    * **Emirati Insight** – Annual-pay inclination is 30 % higher among Emirati nationals.  
-    * **HNW Outliers** – Top 1 % earners skew projections; use segmented pricing.  
-    * **Social Proof** – Social-media-influenced users are 25 % likelier to spend >1 k AED.  
-    * **Trainer Magnet** – Celebrity trainer appeal ranks #1 switch trigger among high-willingness cluster.  
-    * **Loyalty Impact** – Loyalty incentives surface in 33 % of association rules with positive lift.
+    * **Income Plateau** – Spend intent rises sharply up to ~15 k AED then flattens.  
+    * **Tech-Savvy Edge** – 'Smart tech' preference adds +18 % to join likelihood.  
+    * **Evening Surge** – 40 % of filtered cohort prefer evening workouts.  
+    * **Spa Crossover** – 70 % of Yoga/Pilates fans also select Spa/Wellness.  
+    * **Hygiene Pain-point** – Hygiene complaints double luxury-brand preference.  
     """)
 
-# ---------------------------#
-#      CLASSIFICATION        #
-# ---------------------------#
-elif module == "🤖 Classification":
-    st.header("🤖 Join-Intent Classifier")
+# ---------------------------------------------
+# CLASSIFICATION
+# ---------------------------------------------
+elif page == "🤖 Classification":
+    st.header("🤖 High-Willingness Classifier")
 
-    # Binarise target
-    y = (data["Willingness_Score_1_10"] >= 7).astype(int)
-    X = pd.get_dummies(data.drop(columns=["Willingness_Score_1_10"]),
-                       drop_first=True)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42, stratify=y)
+    y = (df["Willingness_Score_1_10"] >= 7).astype(int)
+    X = pd.get_dummies(df.drop(columns=["Willingness_Score_1_10"]), drop_first=True)
+    X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                        test_size=0.25,
+                                                        random_state=42,
+                                                        stratify=y)
 
     scaler = StandardScaler().fit(X_train)
-    X_train_sc, X_test_sc = scaler.transform(X_train), scaler.transform(X_test)
+    X_train_sc = scaler.transform(X_train)
+    X_test_sc = scaler.transform(X_test)
 
     models = {
         "KNN": KNeighborsClassifier(n_neighbors=7),
         "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=42),
-        "Random Forest": RandomForestClassifier(
-            n_estimators=300, max_depth=None, random_state=42),
+        "Random Forest": RandomForestClassifier(n_estimators=300, random_state=42),
         "Gradient Boosting": GradientBoostingClassifier(random_state=42)
     }
 
-    metrics = []
+    results = []
     probas = {}
     for name, mdl in models.items():
         if name == "KNN":
             mdl.fit(X_train_sc, y_train)
             preds = mdl.predict(X_test_sc)
-            proba = mdl.predict_proba(X_test_sc)[:, 1]
+            probas[name] = mdl.predict_proba(X_test_sc)[:, 1]
         else:
             mdl.fit(X_train, y_train)
             preds = mdl.predict(X_test)
-            proba = mdl.predict_proba(X_test)[:, 1]
-        probas[name] = proba
-        metrics.append(performance_table(y_test, preds, name))
+            probas[name] = mdl.predict_proba(X_test)[:, 1]
+        results.append(perf_table(y_test, preds, name))
 
-    res_df = pd.DataFrame(metrics)
-    st.subheader("Performance Summary")
-    st.dataframe(res_df.set_index("Model"))
+    res_df = pd.DataFrame(results).set_index("Model")
+    st.subheader("Model Performance")
+    st.dataframe(res_df)
 
-    # Confusion Matrix toggle
-    chosen = st.selectbox("Select model ↘️ Confusion Matrix", res_df["Model"])
-    mdl = models[chosen]
-    preds_cm = mdl.predict(X_test_sc if chosen == "KNN" else X_test)
-    cm = confusion_matrix(y_test, preds_cm)
+    model_choice = st.selectbox("Confusion Matrix for:", res_df.index.tolist())
+    mdl_cm = models[model_choice]
+    y_pred_cm = mdl_cm.predict(X_test_sc if model_choice == "KNN" else X_test)
+    cm = confusion_matrix(y_test, y_pred_cm)
     fig_cm, ax_cm = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt="d",
-                cmap="Blues", ax=ax_cm,
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=["Pred Low", "Pred High"],
-                yticklabels=["Actual Low", "Actual High"])
-    ax_cm.set_title(f"{chosen} – Confusion Matrix")
+                yticklabels=["Actual Low", "Actual High"],
+                ax=ax_cm)
     st.pyplot(fig_cm)
 
-    # ROC curves
-    st.subheader("ROC/AUC Comparison")
+    st.subheader("ROC Curves")
     fig_roc, ax_roc = plt.subplots()
-    for name, y_score in probas.items():
-        fpr, tpr, _ = roc_curve(y_test, y_score)
+    for name, probs in probas.items():
+        fpr, tpr, _ = roc_curve(y_test, probs)
         ax_roc.plot(fpr, tpr, label=f"{name} (AUC={auc(fpr, tpr):.2f})")
     ax_roc.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    ax_roc.set_xlabel("False Positive Rate")
-    ax_roc.set_ylabel("True Positive Rate")
     ax_roc.legend()
+    ax_roc.set_xlabel("FPR")
+    ax_roc.set_ylabel("TPR")
     st.pyplot(fig_roc)
 
     # Batch prediction
     st.markdown("---")
     st.subheader("🔮 Batch Prediction")
-    upload = st.file_uploader("Upload CSV without 'Willingness_Score_1_10'",
-                              type="csv")
-    if upload:
-        new = pd.read_csv(upload)
-        new_proc = pd.get_dummies(new, drop_first=True)
-        new_proc = new_proc.reindex(columns=X.columns, fill_value=0)
-        best_model = models["Random Forest"]
-        new["High_Willingness_Pred"] = best_model.predict(new_proc)
-        st.success("Prediction complete ✔️")
-        st.write(new.head())
+    upl = st.file_uploader("Upload CSV (no willingness column)", type="csv")
+    if upl:
+        newdf = pd.read_csv(upl)
+        proc = pd.get_dummies(newdf, drop_first=True)
+        proc = proc.reindex(columns=X.columns, fill_value=0)
+        final_model = models["Random Forest"]
+        preds_new = final_model.predict(proc)
+        newdf["High_Willingness_Pred"] = preds_new
+        st.write(newdf.head())
         st.download_button("Download predictions",
-                           new.to_csv(index=False).encode("utf-8"),
-                           file_name="predictions.csv",
-                           mime="text/csv")
+                           newdf.to_csv(index=False).encode("utf-8"),
+                           "predictions.csv",
+                           "text/csv")
 
-# ---------------------------#
-#          CLUSTERING        #
-# ---------------------------#
-elif module == "🎯 Clustering":
+# ---------------------------------------------
+# CLUSTERING
+# ---------------------------------------------
+elif page == "🎯 Clustering":
     st.header("🎯 K-Means Segmentation")
 
     num_cols = ["Age", "Monthly_Income_AED", "Willingness_Score_1_10"]
-    k_sel = st.slider("Choose k (clusters)", 2, 10, 4)
-    km_model = KMeans(n_clusters=k_sel, n_init=10, random_state=42)
-    data["Cluster"] = km_model.fit_predict(data[num_cols])
+    k = st.slider("k (clusters)", 2, 10, 4)
 
-    # Elbow & silhouette
-    st.subheader("Diagnostic Plots")
-    elbow = []
-    silh = []
-    for k in range(2, 11):
-        km_ = KMeans(n_clusters=k, n_init=10, random_state=42).fit(data[num_cols])
-        elbow.append(km_.inertia_)
-        silh.append(silhouette_score(data[num_cols], km_.labels_))
-    fig_el, ax_el = plt.subplots()
-    ax_el.plot(range(2, 11), elbow, marker="o")
-    ax_el.set_xlabel("k")
-    ax_el.set_ylabel("Inertia")
-    ax_el.set_title("Elbow Curve")
-    st.pyplot(fig_el)
+    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
+    df["Cluster"] = kmeans.fit_predict(df[num_cols])
 
-    fig_si, ax_si = plt.subplots()
-    ax_si.plot(range(2, 11), silh, marker="s", color="green")
-    ax_si.set_xlabel("k")
-    ax_si.set_ylabel("Silhouette Score")
-    ax_si.set_title("Silhouette Scores")
-    st.pyplot(fig_si)
+    # Elbow and silhouette diagnostics
+    inertia, silh = [], []
+    for i in range(2, 11):
+        km_i = KMeans(n_clusters=i, n_init=10, random_state=42).fit(df[num_cols])
+        inertia.append(km_i.inertia_)
+        silh.append(silhouette_score(df[num_cols], km_i.labels_))
 
-    # Persona table
+    colD1, colD2 = st.columns(2)
+    with colD1:
+        fig_el, ax_el = plt.subplots()
+        ax_el.plot(range(2, 11), inertia, marker="o")
+        ax_el.set_xlabel("k")
+        ax_el.set_ylabel("Inertia")
+        ax_el.set_title("Elbow Curve")
+        st.pyplot(fig_el)
+    with colD2:
+        fig_si, ax_si = plt.subplots()
+        ax_si.plot(range(2, 11), silh, marker="s", color="green")
+        ax_si.set_title("Silhouette Scores")
+        ax_si.set_xlabel("k")
+        ax_si.set_ylabel("Score")
+        st.pyplot(fig_si)
+
+    # Persona
     st.subheader("Cluster Personas")
-    persona = (data.groupby("Cluster")[["Age", "Monthly_Income_AED",
-                                        "Willingness_Score_1_10"]]
-               .agg({"Age":"mean",
-                     "Monthly_Income_AED":"mean",
-                     "Willingness_Score_1_10":"mean"})
-               .round(1)
-               .rename(columns={"Age":"Avg Age",
-                                "Monthly_Income_AED":"Avg Income",
-                                "Willingness_Score_1_10":"Avg Willingness"}))
+    persona = (df.groupby("Cluster")[num_cols]
+               .agg(["mean"])
+               .droplevel(1, axis=1)
+               .round(1))
     st.dataframe(persona)
 
-    st.download_button("Download clustered data",
-                       data.to_csv(index=False).encode("utf-8"),
-                       file_name="clustered_data.csv",
-                       mime="text/csv")
+    st.download_button("Download labeled data",
+                       df.to_csv(index=False).encode("utf-8"),
+                       "clustered_data.csv",
+                       "text/csv")
 
-# ---------------------------#
-#     ASSOCIATION RULES      #
-# ---------------------------#
-elif module == "🛒 Association Rules":
-    st.header("🛒 Preference Affinity Mining")
+# ---------------------------------------------
+# ASSOCIATION RULES
+# ---------------------------------------------
+elif page == "🛒 Association Rules":
+    st.header("🛒 Apriori Preference Mining")
 
-    bin_cols = [c for c in data.columns
-                if c.startswith(("Act_", "Goal_", "Fac_", "Prob_", "Inf_"))]
-    st.info("Select the binary-flag columns to include. "
-            "We pre-select the most actionable sets.")
-    sel_cols = st.multiselect("Columns",
-                              options=bin_cols,
+    bin_cols = [c for c in df.columns if c.startswith(tuple(["Act_", "Goal_", "Fac_", "Prob_", "Inf_"]))]
+
+    cols_sel = st.multiselect("Select binary columns", bin_cols,
                               default=[c for c in bin_cols if "Act_" in c or "Fac_" in c])
 
-    min_sup = st.slider("Min Support", 0.01, 0.5, 0.05, 0.01)
-    min_conf = st.slider("Min Confidence", 0.1, 0.9, 0.6, 0.05)
-    min_lift = st.slider("Min Lift", 1.0, 5.0, 1.2, 0.1)
+    min_sup = st.slider("Min support", 0.01, 0.5, 0.05, 0.01)
+    min_conf = st.slider("Min confidence", 0.1, 0.9, 0.6, 0.05)
+    min_lift = st.slider("Min lift", 1.0, 5.0, 1.2, 0.1)
 
     if st.button("Run Apriori"):
-        basket = data[sel_cols].astype(bool)
-        freq = apriori(basket, min_support=min_sup, use_colnames=True)
-        if freq.empty:
-            st.warning("No frequent itemsets at current threshold. "
-                       "Lower support and try again.")
+        basket = df[cols_sel].astype(bool)
+        frequent = apriori(basket, min_support=min_sup, use_colnames=True)
+        if frequent.empty:
+            st.warning("No frequent itemsets. Lower support.")
         else:
-            rules = association_rules(freq, metric="confidence",
-                                      min_threshold=min_conf)
+            rules = association_rules(frequent, metric="confidence", min_threshold=min_conf)
             rules = rules[rules["lift"] >= min_lift]
             if rules.empty:
-                st.warning("No rules qualified. Tune thresholds.")
+                st.warning("No rules at these thresholds.")
             else:
-                rules = prettify_rules(rules)
-                rules = (rules.sort_values("lift", ascending=False)
-                              .head(10)
-                              .reset_index(drop=True))
-                st.dataframe(
-                    rules[["antecedents", "consequents",
-                           "support", "confidence", "lift"]]
-                    .style.format({"support":"{:.3f}",
-                                   "confidence":"{:.2f}",
-                                   "lift":"{:.2f}"}), use_container_width=True)
+                rules = prettify_rule_cols(rules)
+                rules_display = (rules.sort_values("lift", ascending=False)
+                                       .head(10)
+                                       .reset_index(drop=True))
+                st.dataframe(rules_display[["antecedents",
+                                            "consequents",
+                                            "support",
+                                            "confidence",
+                                            "lift"]]
+                             .style.format({"support":"{:.3f}",
+                                            "confidence":"{:.2f}",
+                                            "lift":"{:.2f}"}))
 
-# ---------------------------#
-#         REGRESSION         #
-# ---------------------------#
+# ---------------------------------------------
+# REGRESSION
+# ---------------------------------------------
 else:
-    st.header("📈 Spend Modelling")
+    st.header("📈 Spend Prediction")
 
-    target = data["Monthly_Income_AED"]
-    features = pd.get_dummies(data.drop(columns=["Monthly_Income_AED"]),
-                              drop_first=True)
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        features, target, test_size=0.2, random_state=42)
+    y = df["Monthly_Income_AED"]
+    X = pd.get_dummies(df.drop(columns=["Monthly_Income_AED"]), drop_first=True)
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    regressors = {
+    regs = {
         "Linear": LinearRegression(),
         "Ridge": Ridge(alpha=1.0),
         "Lasso": Lasso(alpha=0.001),
         "Decision Tree": DecisionTreeRegressor(max_depth=6, random_state=42)
     }
 
-    results = []
-    for name, reg in regressors.items():
+    reg_results = []
+    for name, reg in regs.items():
         reg.fit(X_tr, y_tr)
         preds = reg.predict(X_te)
         r2 = reg.score(X_te, y_te)
-        rmse = np.sqrt(np.mean((y_te - preds) ** 2))
+        rmse = np.sqrt(np.mean((y_te - preds)**2))
         mae = np.mean(np.abs(y_te - preds))
-        results.append({"Model": name,
-                        "R2": round(r2, 3),
-                        "RMSE": int(rmse),
-                        "MAE": int(mae)})
-    st.subheader("Model Comparison")
-    st.dataframe(pd.DataFrame(results).set_index("Model"))
+        reg_results.append({
+            "Model": name,
+            "R2": round(r2, 3),
+            "RMSE": int(rmse),
+            "MAE": int(mae)
+        })
+    st.dataframe(pd.DataFrame(reg_results).set_index("Model"))
 
     st.markdown("""
-    **Interpretation Notes**
-
-    * **Linear / Ridge** – baseline elastic models; Ridge curbs multicollinearity.  
-    * **Lasso** – performs feature shrinkage → useful for identifying key spend drivers.  
-    * **Decision Tree** – captures non-linear interactions; watch for over-fitting.  
+    **Notes**  
+    * Ridge improves multicollinearity handling versus OLS.  
+    * Decision Tree captures non-linear spend patterns—monitor depth to avoid over-fit.  
+    * Lasso zeroes uninformative features → quick driver screening.  
     """)
